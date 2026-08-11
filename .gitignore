@@ -1,0 +1,14 @@
+# Python bytecode
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Agent local state
+.agents/
+
+# System / IDE files
+.DS_Store
+.idea/
+.vscode/
+*.swp

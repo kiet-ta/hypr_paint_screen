@@ -1,0 +1,21 @@
+# Whiteboard Overlay — Bug Fixes & UI Enhancements
+
+## 1. Text Input Fix ("không gõ chữ được")
+- **Root Cause**: Previously, when the TEXT tool was activated (`text_active = True`), `Canvas.on_draw()` only rendered completed strokes and a static cursor line. The live buffer (`self.app.text_buffer`) was never rendered during the `draw` call while typing. It only got rendered after `commit_text()` was called. Additionally, the cursor line position did not advance with typed characters.
+- **Solution**:
+  1. Updated `Canvas.on_draw()` to render `self.app.text_buffer` in real-time at `self.app.text_pos`.
+  2. Used Cairo `cr.text_extents(text_buffer)` to compute text width dynamically so the cursor bar moves to the end of the typed text.
+  3. Ensured `Canvas` and `Gtk.Window` grab keyboard focus on click (`grab_focus()`), handling Backspace, Enter, Esc, and full Unicode text entry.
+
+## 2. Passthrough & Mode Switching Fix ("Space / Click-Through")
+- **Root Cause**: The previous implementation attempted to invoke `hyprctl keyword layerrule "noinput..."` which failed on modern Hyprland versions (`keyword can't work with non-legacy parsers`). Moreover, setting full `noinput` on the Wayland layer surface stripped all input events from the GTK window, causing `on_key` to miss `Space` keypresses during passthrough mode.
+- **Solution**:
+  1. Replaced broken `hyprctl` subprocess calls with native GDK/Cairo `input_shape_combine_region`.
+  2. **Passthrough Mode (`draw_mode = True`)**: Restricts the GTK input shape region exclusively to the toolbar container (`self.bar.get_allocation()`). The drawing canvas area becomes 100% click-through to underlying desktop windows (browser, IDE, Zoom, etc.), while the toolbar remains interactive.
+  3. **Keyboard Interactivity**: Switched `GtkLayerShell.set_keyboard_mode` to `KeyboardMode.NONE` during passthrough mode so active desktop apps receive keyboard focus seamlessly, and `KeyboardMode.EXCLUSIVE` during drawing mode for whiteboard shortcuts and text entry.
+
+## 3. UI Design Overhaul (Taste-Skill Integration)
+- Integrated modern UI design principles from `taste-skill` anti-slop guidelines:
+  - Frosted glassmorphism dark toolbar (`#0f111a` with 88% opacity, blur, soft borders, and inner shadow).
+  - High-contrast visual indicators: Glowing emerald badge for **Drawing Mode** (`#34d399`) and warm amber badge for **Click-Through** mode (`#fbbf24`).
+  - Tactile button states with hover feedback, blue highlight rings for active tools, and scale animations on color swatches.
