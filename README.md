@@ -41,5 +41,4 @@ python3 whiteboard.py
 | `Ctrl+Q` | Quit |
 | `Enter` | Commit text |
 | `Esc` | Cancel text |
-# hypr_paint_screen
-# hypr_paint_screen
+
