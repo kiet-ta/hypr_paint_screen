@@ -3,6 +3,7 @@
 Whiteboard Overlay for Hyprland/Wayland
 Transparent full-screen whiteboard with Cairo drawing engine, live text typing,
 and reliable click-through input region management.
+Refined Compact High-End Floating Pill UI.
 """
 
 import sys, os, subprocess
@@ -11,18 +12,26 @@ import cairo
 
 gi.require_version('Gtk', '3.0')
 gi.require_version('Gdk', '3.0')
-gi.require_version('GtkLayerShell', '0.1')
-from gi.repository import Gtk, Gdk, GLib, GtkLayerShell
+
+HAS_LAYER_SHELL = False
+try:
+    gi.require_version('GtkLayerShell', '0.1')
+    from gi.repository import GtkLayerShell
+    HAS_LAYER_SHELL = True
+except (ValueError, ImportError):
+    GtkLayerShell = None
+
+from gi.repository import Gtk, Gdk, GLib
 
 LAYER_NS = 'whiteboard-overlay'
 
 # Colors: Charcoal, Red, Blue, Yellow, White
 COLORS = [
-    (0.08, 0.08, 0.10, 1.0),  # Black / Charcoal
-    (0.93, 0.27, 0.27, 1.0),  # Bright Red
-    (0.23, 0.51, 0.96, 1.0),  # Vibrant Blue
-    (0.96, 0.72, 0.15, 1.0),  # Warm Yellow
-    (0.98, 0.98, 1.00, 1.0)   # Pure White
+    (0.09, 0.09, 0.11, 1.0),  # Black / Charcoal
+    (0.94, 0.27, 0.27, 1.0),  # Bright Red
+    (0.23, 0.51, 0.96, 1.0),  # Electric Blue
+    (0.96, 0.62, 0.07, 1.0),  # Amber Yellow
+    (1.00, 1.00, 1.00, 1.0)   # Pure White
 ]
 
 PEN, ERASER, TEXT = 0, 1, 2
@@ -86,7 +95,7 @@ class Canvas(Gtk.DrawingArea):
             cursor_x = cx + extents.x_advance
 
             # Draw glowing cursor bar
-            cr.set_source_rgba(0.2, 0.6, 1.0, 0.9)
+            cr.set_source_rgba(0.23, 0.51, 0.96, 0.9)
             cr.set_line_width(2)
             cr.move_to(cursor_x + 2, cy - 20)
             cr.line_to(cursor_x + 2, cy + 4)
@@ -201,13 +210,13 @@ class App:
         if visual:
             self.win.set_visual(visual)
 
-        GtkLayerShell.init_for_window(self.win)
-        GtkLayerShell.set_namespace(self.win, LAYER_NS)
-        GtkLayerShell.set_layer(self.win, GtkLayerShell.Layer.OVERLAY)
-        for edge in [GtkLayerShell.Edge.TOP, GtkLayerShell.Edge.LEFT, GtkLayerShell.Edge.RIGHT, GtkLayerShell.Edge.BOTTOM]:
-            GtkLayerShell.set_anchor(self.win, edge, True)
-
-        GtkLayerShell.set_keyboard_mode(self.win, GtkLayerShell.KeyboardMode.EXCLUSIVE)
+        if HAS_LAYER_SHELL and GtkLayerShell:
+            GtkLayerShell.init_for_window(self.win)
+            GtkLayerShell.set_namespace(self.win, LAYER_NS)
+            GtkLayerShell.set_layer(self.win, GtkLayerShell.Layer.OVERLAY)
+            for edge in [GtkLayerShell.Edge.TOP, GtkLayerShell.Edge.LEFT, GtkLayerShell.Edge.RIGHT, GtkLayerShell.Edge.BOTTOM]:
+                GtkLayerShell.set_anchor(self.win, edge, True)
+            GtkLayerShell.set_keyboard_mode(self.win, GtkLayerShell.KeyboardMode.EXCLUSIVE)
         self.win.connect('key-press-event', self.on_key)
         self.win.connect('destroy', Gtk.main_quit)
         self.win.connect('realize', lambda _w: self.update_input())
@@ -215,91 +224,116 @@ class App:
 
         outer = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
         
-        # Centered container for sleek toolbar
+        # Centered container for sleek compact floating toolbar
         align_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL)
         align_box.set_halign(Gtk.Align.CENTER)
-        align_box.set_margin_top(12)
+        align_box.set_margin_top(8)
 
-        self.bar = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
-        self.bar.set_margin_start(10)
-        self.bar.set_margin_end(10)
-        self.bar.set_margin_top(6)
-        self.bar.set_margin_bottom(6)
+        self.bar = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=4)
+        self.bar.set_margin_start(6)
+        self.bar.set_margin_end(6)
+        self.bar.set_margin_top(4)
+        self.bar.set_margin_bottom(4)
         self.bar.connect('size-allocate', lambda _w, _a: self.update_input())
 
-        # Valid GTK3 CSS styling
+        # Refined High-End Compact Sleek GTK3 CSS System
         css_data = b"""
         window { background: transparent; }
         box { background: transparent; }
         drawingarea { background: transparent; }
 
+        /* Sleek Floating Island Toolbar */
         .tb {
-            background-color: rgba(15, 17, 26, 0.90);
-            border-radius: 20px;
-            padding: 6px 10px;
+            background-color: rgba(12, 14, 20, 0.94);
+            border-radius: 18px;
+            padding: 4px 8px;
             border: 1px solid rgba(255, 255, 255, 0.12);
-            box-shadow: 0 16px 40px rgba(0, 0, 0, 0.6);
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
         }
-        .tb button {
-            min-width: 40px;
-            min-height: 40px;
-            padding: 6px;
-            border-radius: 12px;
-            border: 1px solid transparent;
-            background-color: rgba(255, 255, 255, 0.05);
-            color: rgba(240, 243, 255, 0.8);
-        }
-        .tb button:hover {
-            background-color: rgba(255, 255, 255, 0.12);
-            color: #ffffff;
-            border-color: rgba(255, 255, 255, 0.2);
-        }
-        .tb button.active {
-            background-color: rgba(59, 130, 246, 0.25);
-            color: #60a5fa;
-            border-color: rgba(96, 165, 250, 0.5);
-            box-shadow: 0 0 12px rgba(59, 130, 246, 0.3);
-        }
-        .tb separator {
-            margin: 4px 6px;
-            background-color: rgba(255, 255, 255, 0.12);
-            min-width: 1px;
-            min-height: 24px;
-        }
-        .swatch {
-            border-radius: 50px;
+
+        /* Tool & Action buttons */
+        button.tool-btn {
+            background-image: none;
+            background-color: transparent;
             min-width: 30px;
             min-height: 30px;
+            padding: 3px;
+            border-radius: 10px;
+            border: 1px solid transparent;
+            color: rgba(240, 243, 255, 0.7);
+        }
+        button.tool-btn:hover {
+            background-color: rgba(255, 255, 255, 0.10);
+            color: #ffffff;
+            border-color: rgba(255, 255, 255, 0.15);
+        }
+        button.tool-btn.active {
+            background-color: rgba(59, 130, 246, 0.22);
+            color: #60a5fa;
+            border-color: rgba(96, 165, 250, 0.5);
+            box-shadow: 0 0 10px rgba(59, 130, 246, 0.3);
+        }
+
+        /* Subtle vertical separators */
+        .tb separator {
+            margin: 4px 5px;
+            background-color: rgba(255, 255, 255, 0.08);
+            min-width: 1px;
+            min-height: 20px;
+        }
+
+        /* Color Swatches - Perfect solid round circles with ZERO GTK theme gradient */
+        button.swatch-btn {
+            background-image: none;
+            min-width: 20px;
+            min-height: 20px;
+            border-radius: 50px;
             padding: 0;
-            border: 2px solid rgba(255, 255, 255, 0.15);
+            margin: 2px 4px;
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            box-shadow: none;
         }
-        .swatch.active {
-            border-color: #ffffff;
-            box-shadow: 0 0 0 3px rgba(96, 165, 250, 0.6);
+        button.swatch-btn:hover {
+            border-color: rgba(255, 255, 255, 0.8);
         }
-        .mode-btn {
+        button.swatch-btn.active {
+            border: 2px solid #ffffff;
+            box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.85);
+        }
+
+        button.swatch-0 { background-color: #18181b; background-image: none; }
+        button.swatch-1 { background-color: #ef4444; background-image: none; }
+        button.swatch-2 { background-color: #3b82f6; background-image: none; }
+        button.swatch-3 { background-color: #f59e0b; background-image: none; }
+        button.swatch-4 { background-color: #ffffff; background-image: none; }
+
+        /* Compact Mode status badge button */
+        button.mode-btn {
             font-weight: bold;
-            padding: 6px 14px;
-            border-radius: 12px;
+            font-size: 11px;
+            padding: 3px 10px;
+            border-radius: 10px;
+            min-height: 30px;
         }
-        .mode-draw {
-            background-color: rgba(16, 185, 129, 0.2);
+        button.mode-draw {
+            background-color: rgba(16, 185, 129, 0.20);
             color: #34d399;
-            border: 1px solid rgba(52, 211, 153, 0.4);
-            box-shadow: 0 0 14px rgba(16, 185, 129, 0.25);
+            border: 1px solid rgba(52, 211, 153, 0.40);
         }
-        .mode-passthrough {
+        button.mode-passthrough {
             background-color: rgba(245, 158, 11, 0.18);
             color: #fbbf24;
             border: 1px solid rgba(245, 158, 11, 0.35);
         }
-        .btn-quit {
-            background-color: rgba(239, 68, 68, 0.15);
+
+        /* Quit button */
+        button.btn-quit {
+            background-color: rgba(239, 68, 68, 0.12);
             color: #f87171;
-            border: 1px solid rgba(239, 68, 68, 0.3);
+            border: 1px solid rgba(239, 68, 68, 0.25);
         }
-        .btn-quit:hover {
-            background-color: rgba(239, 68, 68, 0.3);
+        button.btn-quit:hover {
+            background-color: rgba(239, 68, 68, 0.30);
             color: #ffffff;
         }
         """
@@ -312,40 +346,39 @@ class App:
             Gdk.Screen.get_default(), cssp, Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION
         )
 
-        # Tools buttons
+        # Tools buttons - Crisp small MENU icons
         self.btn_pen = Gtk.Button()
-        self.btn_pen.set_image(Gtk.Image.new_from_icon_name("applications-graphics", Gtk.IconSize.BUTTON))
+        self.btn_pen.get_style_context().add_class("tool-btn")
+        self.btn_pen.set_image(Gtk.Image.new_from_icon_name("applications-graphics", Gtk.IconSize.MENU))
         self.btn_pen.set_tooltip_text("Pen Tool (P)")
         self.btn_pen.connect('clicked', lambda b: self.set_tool(PEN))
         self.bar.pack_start(self.btn_pen, False, False, 0)
 
         self.btn_eraser = Gtk.Button()
-        self.btn_eraser.set_image(Gtk.Image.new_from_icon_name("edit-clear", Gtk.IconSize.BUTTON))
+        self.btn_eraser.get_style_context().add_class("tool-btn")
+        self.btn_eraser.set_image(Gtk.Image.new_from_icon_name("edit-clear", Gtk.IconSize.MENU))
         self.btn_eraser.set_tooltip_text("Eraser Tool (E)")
         self.btn_eraser.connect('clicked', lambda b: self.set_tool(ERASER))
         self.bar.pack_start(self.btn_eraser, False, False, 0)
 
         self.btn_text = Gtk.Button()
-        self.btn_text.set_image(Gtk.Image.new_from_icon_name("insert-text", Gtk.IconSize.BUTTON))
+        self.btn_text.get_style_context().add_class("tool-btn")
+        self.btn_text.set_image(Gtk.Image.new_from_icon_name("insert-text", Gtk.IconSize.MENU))
         self.btn_text.set_tooltip_text("Text Tool (T)")
         self.btn_text.connect('clicked', lambda b: self.set_tool(TEXT))
         self.bar.pack_start(self.btn_text, False, False, 0)
 
         self._sep()
 
-        # Color Swatches
+        # Color Swatches - Round buttons with specific swatch-btn class & swatch-0..4 classes
         self.color_btns = []
         for i, c in enumerate(COLORS):
             btn = Gtk.Button()
-            btn.set_size_request(30, 30)
+            btn.set_size_request(20, 20)
             btn.set_tooltip_text(f"Color {i+1} ({i+1})")
-            btn.get_style_context().add_class("swatch")
-            r, g, b, a = c
-            css_c = f".c{i}{{background-color:rgba({int(r*255)},{int(g*255)},{int(b*255)},{a});}}"
-            cp = Gtk.CssProvider()
-            cp.load_from_data(css_c.encode())
-            btn.get_style_context().add_provider(cp, Gtk.STYLE_PROVIDER_PRIORITY_USER)
-            btn.get_style_context().add_class(f"c{i}")
+            btn_ctx = btn.get_style_context()
+            btn_ctx.add_class("swatch-btn")
+            btn_ctx.add_class(f"swatch-{i}")
             btn.connect('clicked', lambda b, idx=i: self.set_color(idx))
             self.color_btns.append(btn)
             self.bar.pack_start(btn, False, False, 0)
@@ -354,19 +387,22 @@ class App:
 
         # Undo / Redo / Clear
         self.btn_undo = Gtk.Button()
-        self.btn_undo.set_image(Gtk.Image.new_from_icon_name("edit-undo", Gtk.IconSize.BUTTON))
+        self.btn_undo.get_style_context().add_class("tool-btn")
+        self.btn_undo.set_image(Gtk.Image.new_from_icon_name("edit-undo", Gtk.IconSize.MENU))
         self.btn_undo.set_tooltip_text("Undo (Ctrl+Z)")
         self.btn_undo.connect('clicked', lambda b: self.undo())
         self.bar.pack_start(self.btn_undo, False, False, 0)
 
         self.btn_redo = Gtk.Button()
-        self.btn_redo.set_image(Gtk.Image.new_from_icon_name("edit-redo", Gtk.IconSize.BUTTON))
+        self.btn_redo.get_style_context().add_class("tool-btn")
+        self.btn_redo.set_image(Gtk.Image.new_from_icon_name("edit-redo", Gtk.IconSize.MENU))
         self.btn_redo.set_tooltip_text("Redo (Ctrl+Y)")
         self.btn_redo.connect('clicked', lambda b: self.redo())
         self.bar.pack_start(self.btn_redo, False, False, 0)
 
         self.btn_clear = Gtk.Button()
-        self.btn_clear.set_image(Gtk.Image.new_from_icon_name("edit-clear-all", Gtk.IconSize.BUTTON))
+        self.btn_clear.get_style_context().add_class("tool-btn")
+        self.btn_clear.set_image(Gtk.Image.new_from_icon_name("edit-clear-all", Gtk.IconSize.MENU))
         self.btn_clear.set_tooltip_text("Clear All")
         self.btn_clear.connect('clicked', lambda b: self.clear())
         self.bar.pack_start(self.btn_clear, False, False, 0)
@@ -375,8 +411,9 @@ class App:
 
         # Draw / Passthrough Mode Toggle Button
         self.btn_mode = Gtk.Button()
+        self.btn_mode.get_style_context().add_class("tool-btn")
         self.btn_mode.get_style_context().add_class("mode-btn")
-        self.btn_mode.set_image(Gtk.Image.new_from_icon_name("input-mouse", Gtk.IconSize.BUTTON))
+        self.btn_mode.set_image(Gtk.Image.new_from_icon_name("input-mouse", Gtk.IconSize.MENU))
         self.btn_mode.set_label(" Drawing")
         self.btn_mode.set_tooltip_text("Toggle Passthrough / Draw (Space / Ctrl+H)")
         self.btn_mode.connect('clicked', lambda b: self.toggle_mode())
@@ -385,9 +422,10 @@ class App:
         self._sep()
 
         self.btn_quit = Gtk.Button()
-        self.btn_quit.set_image(Gtk.Image.new_from_icon_name("window-close", Gtk.IconSize.BUTTON))
-        self.btn_quit.set_tooltip_text("Quit Overlay (Ctrl+Q)")
+        self.btn_quit.get_style_context().add_class("tool-btn")
         self.btn_quit.get_style_context().add_class("btn-quit")
+        self.btn_quit.set_image(Gtk.Image.new_from_icon_name("window-close", Gtk.IconSize.MENU))
+        self.btn_quit.set_tooltip_text("Quit Overlay (Ctrl+Q)")
         self.btn_quit.connect('clicked', lambda b: Gtk.main_quit())
         self.bar.pack_start(self.btn_quit, False, False, 0)
 
@@ -450,7 +488,8 @@ class App:
                 w.input_shape_combine_region(region, 0, 0)
 
             # Keyboard mode NONE lets active desktop apps receive keyboard focus
-            GtkLayerShell.set_keyboard_mode(self.win, GtkLayerShell.KeyboardMode.NONE)
+            if HAS_LAYER_SHELL and GtkLayerShell:
+                GtkLayerShell.set_keyboard_mode(self.win, GtkLayerShell.KeyboardMode.NONE)
         else:
             # Drawing mode: full window receives input
             rect = cairo.RectangleInt(0, 0, 32767, 32767)
@@ -458,7 +497,8 @@ class App:
             w.input_shape_combine_region(region, 0, 0)
 
             # EXCLUSIVE keyboard mode captures shortcuts and text input
-            GtkLayerShell.set_keyboard_mode(self.win, GtkLayerShell.KeyboardMode.EXCLUSIVE)
+            if HAS_LAYER_SHELL and GtkLayerShell:
+                GtkLayerShell.set_keyboard_mode(self.win, GtkLayerShell.KeyboardMode.EXCLUSIVE)
             if self.area:
                 self.area.grab_focus()
 
@@ -525,12 +565,12 @@ class App:
         ctx = self.btn_mode.get_style_context()
 
         if self.draw_mode:
-            self.btn_mode.set_image(Gtk.Image.new_from_icon_name("input-mouse", Gtk.IconSize.BUTTON))
+            self.btn_mode.set_image(Gtk.Image.new_from_icon_name("input-mouse", Gtk.IconSize.MENU))
             self.btn_mode.set_label(" Click-Through")
             ctx.remove_class("mode-draw")
             ctx.add_class("mode-passthrough")
         else:
-            self.btn_mode.set_image(Gtk.Image.new_from_icon_name("input-tablet", Gtk.IconSize.BUTTON))
+            self.btn_mode.set_image(Gtk.Image.new_from_icon_name("input-tablet", Gtk.IconSize.MENU))
             self.btn_mode.set_label(" Drawing")
             ctx.remove_class("mode-passthrough")
             ctx.add_class("mode-draw")

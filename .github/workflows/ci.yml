@@ -16,30 +16,41 @@ jobs:
       - name: Checkout Code
         uses: actions/checkout@v4
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.11"
-          cache: "pip"
-
-      - name: Install Linting & Security Tools
+      - name: Install System Dependencies
         run: |
-          python -m pip install --upgrade pip
-          pip install ruff flake8 bandit
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            python3-gi \
+            python3-gi-cairo \
+            gir1.2-gtk-3.0 \
+            gir1.2-gtklayershell-0.1 \
+            libgtk-3-dev \
+            libgtk-layer-shell-dev \
+            libcairo2-dev
+
+      - name: Setup uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Set up Python Environment with uv
+        run: |
+          uv venv
+          uv pip install ruff flake8 bandit pycairo PyGObject
 
       - name: Verify Python Syntax Compilation
         run: |
-          python3 -c "import py_compile; py_compile.compile('whiteboard.py', doraise=True)"
+          uv run python3 -c "import py_compile; py_compile.compile('whiteboard.py', doraise=True)"
 
       - name: Code Linting with Ruff
         run: |
-          ruff check . --ignore E501
+          uv run ruff check whiteboard.py
 
       - name: Security Scan with Bandit
         run: |
-          bandit -r whiteboard.py -ll
+          uv run bandit -r whiteboard.py -ll
 
-  headless-smoke-test:
+  headless-integration-test:
     name: Headless Integration Test
     runs-on: ubuntu-latest
 
@@ -47,33 +58,37 @@ jobs:
       - name: Checkout Code
         uses: actions/checkout@v4
 
-      - name: Install System Dependencies (GTK3 & Cairo)
+      - name: Install System Dependencies (GTK3, Layer Shell & Cairo)
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
             python3-gi \
             python3-gi-cairo \
             gir1.2-gtk-3.0 \
+            gir1.2-gtklayershell-0.1 \
+            libgtk-3-dev \
+            libgtk-layer-shell-dev \
             libcairo2-dev \
-            libgirepository1.0-dev \
             xvfb
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
+      - name: Setup uv
+        uses: astral-sh/setup-uv@v5
         with:
-          python-version: "3.11"
+          enable-cache: true
 
-      - name: Install PyGObject & PyCairo
+      - name: Create Python Virtual Environment with uv
         run: |
-          pip install --upgrade pip
-          pip install pycairo PyGObject
+          uv venv
+          uv pip install pycairo PyGObject
 
-      - name: Run Headless Import Test
+      - name: Run Headless Application Test
         run: |
-          xvfb-run -a python3 -c "
+          uv run xvfb-run -a python3 -c "
+          import sys
           import gi
           gi.require_version('Gtk', '3.0')
           gi.require_version('cairo', '1.0')
-          from gi.repository import Gtk, Gdk, cairo
-          print('GTK3 and Cairo successfully imported in headless environment!')
+
+          import whiteboard
+          print('Whiteboard application imported and initialized cleanly!')
           "
