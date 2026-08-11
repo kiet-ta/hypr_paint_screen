@@ -42,3 +42,4 @@ python3 whiteboard.py
 | `Enter` | Commit text |
 | `Esc` | Cancel text |
 # hypr_paint_screen
+# hypr_paint_screen
