@@ -1,5 +1,6 @@
 # 🎨 Whiteboard Overlay for Hyprland / Wayland
 
+[![CI Pipeline](https://github.com/kiet-ta/hypr_paint_screen/actions/workflows/ci.yml/badge.svg)](https://github.com/kiet-ta/hypr_paint_screen/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Platform](https://img.shields.io/badge/Platform-Wayland%20%7C%20Hyprland-brightgreen.svg)](https://hyprland.org/)
 [![Python](https://img.shields.io/badge/Python-3.8%2B-blue.svg)](https://www.python.org/)
