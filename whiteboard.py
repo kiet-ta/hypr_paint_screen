@@ -7,12 +7,12 @@ and reliable click-through input region management.
 
 import sys, os, subprocess
 import gi
+import cairo
 
 gi.require_version('Gtk', '3.0')
 gi.require_version('Gdk', '3.0')
 gi.require_version('GtkLayerShell', '0.1')
-gi.require_version('cairo', '1.0')
-from gi.repository import Gtk, Gdk, GLib, GtkLayerShell, cairo
+from gi.repository import Gtk, Gdk, GLib, GtkLayerShell
 
 LAYER_NS = 'whiteboard-overlay'
 
@@ -58,9 +58,9 @@ class Canvas(Gtk.DrawingArea):
     def on_draw(self, _w, cr):
         # Clear canvas surface to fully transparent
         cr.set_source_rgba(0, 0, 0, 0)
-        cr.set_operator(cairo.Operator.CLEAR)
+        cr.set_operator(cairo.OPERATOR_CLEAR)
         cr.paint()
-        cr.set_operator(cairo.Operator.OVER)
+        cr.set_operator(cairo.OPERATOR_OVER)
 
         # Draw completed strokes
         for s in self.app.strokes:
@@ -74,7 +74,7 @@ class Canvas(Gtk.DrawingArea):
         if self.app.tool == TEXT and self.app.text_active:
             cx, cy = self.app.text_pos
             cr.set_source_rgba(*self.app.color)
-            cr.select_font_face("Sans", cairo.FontSlant.NORMAL, cairo.FontWeight.BOLD)
+            cr.select_font_face("Sans", cairo.FONT_SLANT_NORMAL, cairo.FONT_WEIGHT_BOLD)
             cr.set_font_size(24)
 
             # Render live text buffer
@@ -99,7 +99,7 @@ class Canvas(Gtk.DrawingArea):
             if not s.text:
                 return
             cr.set_source_rgba(*s.color)
-            cr.select_font_face("Sans", cairo.FontSlant.NORMAL, cairo.FontWeight.BOLD)
+            cr.select_font_face("Sans", cairo.FONT_SLANT_NORMAL, cairo.FONT_WEIGHT_BOLD)
             cr.set_font_size(24)
             cr.move_to(s.tx, s.ty)
             cr.show_text(s.text)
@@ -108,29 +108,29 @@ class Canvas(Gtk.DrawingArea):
         if not s.points:
             return
 
-        cr.set_line_cap(cairo.LineCap.ROUND)
-        cr.set_line_join(cairo.LineJoin.ROUND)
+        cr.set_line_cap(cairo.LINE_CAP_ROUND)
+        cr.set_line_join(cairo.LINE_JOIN_ROUND)
         cr.set_line_width(s.width)
 
         if s.tool == ERASER:
-            cr.set_operator(cairo.Operator.DEST_OUT)
+            cr.set_operator(cairo.OPERATOR_DEST_OUT)
             cr.set_source_rgba(0, 0, 0, 0)
         else:
-            cr.set_operator(cairo.Operator.OVER)
+            cr.set_operator(cairo.OPERATOR_OVER)
             cr.set_source_rgba(*s.color)
 
         pts = s.points
         if len(pts) == 1:
             cr.arc(pts[0][0], pts[0][1], s.width / 2, 0, 6.2832)
             cr.fill()
-            cr.set_operator(cairo.Operator.OVER)
+            cr.set_operator(cairo.OPERATOR_OVER)
             return
 
         cr.move_to(*pts[0])
         for x, y in pts[1:]:
             cr.line_to(x, y)
         cr.stroke()
-        cr.set_operator(cairo.Operator.OVER)
+        cr.set_operator(cairo.OPERATOR_OVER)
 
     def on_press(self, _w, e):
         if self.app.draw_mode or e.button != 1:
@@ -227,18 +227,18 @@ class App:
         self.bar.set_margin_bottom(6)
         self.bar.connect('size-allocate', lambda _w, _a: self.update_input())
 
-        # Anti-slop / Taste Design System CSS styling
+        # Valid GTK3 CSS styling
         css_data = b"""
         window { background: transparent; }
         box { background: transparent; }
         drawingarea { background: transparent; }
 
         .tb {
-            background: rgba(15, 17, 26, 0.88);
+            background-color: rgba(15, 17, 26, 0.90);
             border-radius: 20px;
             padding: 6px 10px;
             border: 1px solid rgba(255, 255, 255, 0.12);
-            box-shadow: 0 16px 40px rgba(0, 0, 0, 0.6), inset 0 1px 0 rgba(255, 255, 255, 0.15);
+            box-shadow: 0 16px 40px rgba(0, 0, 0, 0.6);
         }
         .tb button {
             min-width: 40px;
@@ -246,67 +246,61 @@ class App:
             padding: 6px;
             border-radius: 12px;
             border: 1px solid transparent;
-            background: rgba(255, 255, 255, 0.05);
+            background-color: rgba(255, 255, 255, 0.05);
             color: rgba(240, 243, 255, 0.8);
-            transition: all 0.15s ease;
         }
         .tb button:hover {
-            background: rgba(255, 255, 255, 0.12);
+            background-color: rgba(255, 255, 255, 0.12);
             color: #ffffff;
             border-color: rgba(255, 255, 255, 0.2);
         }
         .tb button.active {
-            background: rgba(59, 130, 246, 0.25);
+            background-color: rgba(59, 130, 246, 0.25);
             color: #60a5fa;
             border-color: rgba(96, 165, 250, 0.5);
-            box-shadow: 0 0 12px rgba(59, 130, 246, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.2);
+            box-shadow: 0 0 12px rgba(59, 130, 246, 0.3);
         }
         .tb separator {
             margin: 4px 6px;
-            background: rgba(255, 255, 255, 0.12);
+            background-color: rgba(255, 255, 255, 0.12);
             min-width: 1px;
             min-height: 24px;
         }
         .swatch {
-            border-radius: 50%;
+            border-radius: 50px;
             min-width: 30px;
             min-height: 30px;
             padding: 0;
             border: 2px solid rgba(255, 255, 255, 0.15);
-            transition: transform 0.15s ease;
-        }
-        .swatch:hover {
-            transform: scale(1.1);
         }
         .swatch.active {
             border-color: #ffffff;
-            box-shadow: 0 0 0 3px rgba(96, 165, 250, 0.6), inset 0 1px 0 rgba(255, 255, 255, 0.4);
-            transform: scale(1.12);
+            box-shadow: 0 0 0 3px rgba(96, 165, 250, 0.6);
         }
         .mode-btn {
-            font-weight: 600;
+            font-weight: bold;
             padding: 6px 14px;
             border-radius: 12px;
         }
         .mode-draw {
-            background: rgba(16, 185, 129, 0.2) !important;
-            color: #34d399 !important;
-            border: 1px solid rgba(52, 211, 153, 0.4) !important;
+            background-color: rgba(16, 185, 129, 0.2);
+            color: #34d399;
+            border: 1px solid rgba(52, 211, 153, 0.4);
             box-shadow: 0 0 14px rgba(16, 185, 129, 0.25);
         }
         .mode-passthrough {
-            background: rgba(245, 158, 11, 0.18) !important;
-            color: #fbbf24 !important;
-            border: 1px solid rgba(245, 158, 11, 0.35) !important;
+            background-color: rgba(245, 158, 11, 0.18);
+            color: #fbbf24;
+            border: 1px solid rgba(245, 158, 11, 0.35);
         }
         .btn-quit {
-            background: rgba(239, 68, 68, 0.15) !important;
-            color: #f87171 !important;
-            border: 1px solid rgba(239, 68, 68, 0.3) !important;
+            background-color: rgba(239, 68, 68, 0.15);
+            color: #f87171;
+            border: 1px solid rgba(239, 68, 68, 0.3);
         }
         .btn-quit:hover {
-            background: rgba(239, 68, 68, 0.3) !important;
-            color: #ffffff !important;
+            background-color: rgba(239, 68, 68, 0.3);
+            color: #ffffff;
         }
         """
 
@@ -347,7 +341,7 @@ class App:
             btn.set_tooltip_text(f"Color {i+1} ({i+1})")
             btn.get_style_context().add_class("swatch")
             r, g, b, a = c
-            css_c = f".c{i}{{background:rgba({int(r*255)},{int(g*255)},{int(b*255)},{a});}}"
+            css_c = f".c{i}{{background-color:rgba({int(r*255)},{int(g*255)},{int(b*255)},{a});}}"
             cp = Gtk.CssProvider()
             cp.load_from_data(css_c.encode())
             btn.get_style_context().add_provider(cp, Gtk.STYLE_PROVIDER_PRIORITY_USER)
@@ -421,9 +415,9 @@ class App:
 
     def on_win_draw(self, _w, cr):
         cr.set_source_rgba(0, 0, 0, 0)
-        cr.set_operator(cairo.Operator.CLEAR)
+        cr.set_operator(cairo.OPERATOR_CLEAR)
         cr.paint()
-        cr.set_operator(cairo.Operator.OVER)
+        cr.set_operator(cairo.OPERATOR_OVER)
         return False
 
     def update_input(self):
@@ -452,13 +446,16 @@ class App:
                 region = cairo.Region(rect)
                 w.input_shape_combine_region(region, 0, 0)
             else:
-                w.input_shape_combine_region(cairo.Region(), 0, 0)
+                region = cairo.Region()
+                w.input_shape_combine_region(region, 0, 0)
 
             # Keyboard mode NONE lets active desktop apps receive keyboard focus
             GtkLayerShell.set_keyboard_mode(self.win, GtkLayerShell.KeyboardMode.NONE)
         else:
             # Drawing mode: full window receives input
-            w.input_shape_combine_region(None, 0, 0)
+            rect = cairo.RectangleInt(0, 0, 32767, 32767)
+            region = cairo.Region(rect)
+            w.input_shape_combine_region(region, 0, 0)
 
             # EXCLUSIVE keyboard mode captures shortcuts and text input
             GtkLayerShell.set_keyboard_mode(self.win, GtkLayerShell.KeyboardMode.EXCLUSIVE)
