@@ -694,7 +694,8 @@ class App:
                 w.input_shape_combine_region(region, 0, 0)
 
             # Keyboard mode NONE lets active desktop apps receive keyboard focus
-            GtkLayerShell.set_keyboard_mode(self.win, GtkLayerShell.KeyboardMode.NONE)
+            if HAS_LAYER_SHELL and GtkLayerShell:
+                GtkLayerShell.set_keyboard_mode(self.win, GtkLayerShell.KeyboardMode.NONE)
         else:
             # Drawing mode: full window receives input
             rect = cairo.RectangleInt(0, 0, 32767, 32767)
@@ -702,7 +703,8 @@ class App:
             w.input_shape_combine_region(region, 0, 0)
 
             # EXCLUSIVE keyboard mode captures shortcuts and text input
-            GtkLayerShell.set_keyboard_mode(self.win, GtkLayerShell.KeyboardMode.EXCLUSIVE)
+            if HAS_LAYER_SHELL and GtkLayerShell:
+                GtkLayerShell.set_keyboard_mode(self.win, GtkLayerShell.KeyboardMode.EXCLUSIVE)
             if self.area:
                 self.area.grab_focus()
 
