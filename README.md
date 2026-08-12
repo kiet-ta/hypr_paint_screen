@@ -35,6 +35,22 @@ Transparent full-screen whiteboard overlay for Hyprland/Wayland. Draw, type text
 | `Enter` | Commit text |
 | `Esc` | Cancel text |
 
+## Passthrough (Click-Through) Mode
+
+`Space` switches the overlay into click-through mode: the canvas stops intercepting
+the pointer, and the overlay **releases its keyboard grab** so the app underneath
+receives your typing normally. Only the floating toolbar stays interactive.
+
+Because the overlay no longer receives key events in this mode, `Space` cannot bring
+you back. There are two ways out:
+
+1. Click the amber **`Pass`** badge in the toolbar.
+2. Send `SIGUSR1` — bind this in `~/.config/hypr/hyprland.conf` for a true global toggle:
+
+```ini
+bind = SUPER, W, exec, pkill -USR1 -f whiteboard.py
+```
+
 ## Run
 
 ```bash

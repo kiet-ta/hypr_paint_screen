@@ -14,6 +14,42 @@
   2. **Passthrough Mode (`draw_mode = True`)**: Restricts the GTK input shape region exclusively to the toolbar container (`self.bar.get_allocation()`). The drawing canvas area becomes 100% click-through to underlying desktop windows (browser, IDE, Zoom, etc.), while the toolbar remains interactive.
   3. **Keyboard Interactivity**: Switched `GtkLayerShell.set_keyboard_mode` to `KeyboardMode.NONE` during passthrough mode so active desktop apps receive keyboard focus seamlessly, and `KeyboardMode.EXCLUSIVE` during drawing mode for whiteboard shortcuts and text entry.
 
+## 2b. Regression: Click-Through Could Not Type Into Apps Underneath
+
+- **Symptom**: `Space` visibly flipped the badge to `Pass` and mouse clicks passed through
+  to the desktop, but keyboard input never reached the app underneath — typing was
+  swallowed by the overlay.
+- **Root Cause**: Commit `62f17f3` wrapped both `GtkLayerShell.set_keyboard_mode` calls in
+  `if HAS_LAYER_SHELL and GtkLayerShell:` — but **`HAS_LAYER_SHELL` was never defined**
+  anywhere in the module. `update_input()` therefore raised `NameError` immediately after
+  applying the pointer input-shape. Because `update_input()` is reached from GTK signal
+  handlers, PyGObject printed the traceback and swallowed it, so the app kept running with:
+  - pointer region correctly shrunk to the toolbar (mouse passthrough *appeared* to work), but
+  - `KeyboardMode.EXCLUSIVE` still in force — the overlay never released its keyboard grab.
+- **Solution**:
+  1. Defined `HAS_LAYER_SHELL` via a guarded `try/except` import (the intent of the original
+     commit), with `GtkLayerShell = None` and an `X11 fullscreen` fallback so headless CI
+     still imports the module.
+  2. Extracted `App._set_keyboard_mode()`, which applies the mode **and calls
+     `Gdk.Display.flush()`** — without the flush the `wl_surface` commit is deferred to the
+     next frame and the grab lingers.
+  3. In passthrough, the keyboard grab is now released *before* the pointer region shrinks,
+     and `self.win.set_focus(None)` drops GTK's internal focus so the canvas stops claiming
+     key events.
+  4. Renamed the inverted `draw_mode` flag to `passthrough` (`draw_mode = True` meaning
+     "not drawing" is what made this area error-prone in the first place).
+
+## 2c. Returning From Passthrough + Broken Redo
+
+- **Passthrough is a one-way trip for the keyboard**: once the grab is correctly released, the
+  overlay receives no key events, so `Space` cannot toggle back. Added a `SIGUSR1` handler
+  (`App._on_signal_toggle`) so a compositor keybind works as a global toggle:
+  `bind = SUPER, W, exec, pkill -USR1 -f whiteboard.py`. The toolbar `Pass` badge remains
+  clickable as the no-config fallback, and a toast now states the way back.
+- **Redo was dead code**: `self.redo = []` in `App.__init__` shadowed the `redo()` method, so
+  the Redo button and `Ctrl+Y` raised `TypeError: 'list' object is not callable`. The list is
+  now `self.redo_stack`.
+
 ## 3. UI Design Overhaul (Taste-Skill Integration)
 - Integrated modern UI design principles from `taste-skill` anti-slop guidelines:
   - Frosted glassmorphism dark toolbar (`#0f111a` with 88% opacity, blur, soft borders, and inner shadow).

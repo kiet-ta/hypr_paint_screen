@@ -7,14 +7,35 @@ and GDK click-through input region management.
 Ultra-Compact Refined Floating Pill Design.
 """
 
-import sys, os, time, math, subprocess
-import gi
+import math
+import os
+import signal
+import time
+
 import cairo
+import gi
 
 gi.require_version('Gtk', '3.0')
 gi.require_version('Gdk', '3.0')
-gi.require_version('GtkLayerShell', '0.1')
-from gi.repository import Gtk, Gdk, GLib, GtkLayerShell
+from gi.repository import Gdk, GLib, Gtk  # noqa: E402
+
+# GtkLayerShell is only present on Wayland systems that ship gtk-layer-shell.
+# Guard the import so the module still loads under headless CI / X11.
+try:
+    gi.require_version('GtkLayerShell', '0.1')
+    from gi.repository import GtkLayerShell  # noqa: E402
+    HAS_LAYER_SHELL = True
+except (ValueError, ImportError):
+    GtkLayerShell = None
+    HAS_LAYER_SHELL = False
+
+# GLib.unix_signal_add is deprecated on newer PyGObject; fall back for older ones.
+try:
+    gi.require_version('GLibUnix', '2.0')
+    from gi.repository import GLibUnix  # noqa: E402
+    unix_signal_add = GLibUnix.signal_add
+except (ValueError, ImportError):
+    unix_signal_add = GLib.unix_signal_add
 
 LAYER_NS = 'whiteboard-overlay'
 
@@ -225,7 +246,7 @@ class Canvas(Gtk.DrawingArea):
         cr.set_operator(cairo.OPERATOR_OVER)
 
     def on_press(self, _w, e):
-        if self.app.draw_mode or e.button != 1:
+        if self.app.passthrough or e.button != 1:
             return
 
         if self.app.tool == TEXT:
@@ -255,7 +276,7 @@ class Canvas(Gtk.DrawingArea):
         self.queue_draw()
 
     def on_motion(self, _w, e):
-        if self.app.draw_mode or not self.cur:
+        if self.app.passthrough or not self.cur:
             return
         if e.state & Gdk.ModifierType.BUTTON1_MASK:
             if self.app.tool in (RECTANGLE, CIRCLE, ARROW):
@@ -268,7 +289,7 @@ class Canvas(Gtk.DrawingArea):
             self.queue_draw()
 
     def on_release(self, _w, e):
-        if self.app.draw_mode or e.button != 1 or not self.cur:
+        if self.app.passthrough or e.button != 1 or not self.cur:
             return
         if self.app.tool in (RECTANGLE, CIRCLE, ARROW):
             if len(self.cur.points) == 1:
@@ -278,7 +299,7 @@ class Canvas(Gtk.DrawingArea):
 
         if self.cur.points:
             self.app.strokes.append(self.cur)
-            self.app.redo.clear()
+            self.app.redo_stack.clear()
         self.cur = None
         self.queue_draw()
 
@@ -286,14 +307,14 @@ class Canvas(Gtk.DrawingArea):
 class App:
     def __init__(self):
         self.strokes = []
-        self.redo = []
+        self.redo_stack = []
         self.tool = PEN
         self.color_idx = 1
         self.color = COLORS[1]
         self.thickness_idx = 1  # 4px default
         self.font_family_idx = 0  # Sans
         self.font_size_idx = 1    # 24px (Medium)
-        self.draw_mode = False    # False = Drawing active, True = Click-through
+        self.passthrough = False    # False = Drawing active, True = Click-through
         self.text_active = False
         self.text_buffer = ""
         self.text_pos = (0, 0)
@@ -301,6 +322,7 @@ class App:
         self.area = None
         self.bar = None
         self.build()
+        unix_signal_add(GLib.PRIORITY_DEFAULT, signal.SIGUSR1, self._on_signal_toggle)
 
     def build(self):
         self.win = Gtk.Window()
@@ -316,13 +338,17 @@ class App:
         if visual:
             self.win.set_visual(visual)
 
-        GtkLayerShell.init_for_window(self.win)
-        GtkLayerShell.set_namespace(self.win, LAYER_NS)
-        GtkLayerShell.set_layer(self.win, GtkLayerShell.Layer.OVERLAY)
-        for edge in [GtkLayerShell.Edge.TOP, GtkLayerShell.Edge.LEFT, GtkLayerShell.Edge.RIGHT, GtkLayerShell.Edge.BOTTOM]:
-            GtkLayerShell.set_anchor(self.win, edge, True)
+        if HAS_LAYER_SHELL:
+            GtkLayerShell.init_for_window(self.win)
+            GtkLayerShell.set_namespace(self.win, LAYER_NS)
+            GtkLayerShell.set_layer(self.win, GtkLayerShell.Layer.OVERLAY)
+            for edge in [GtkLayerShell.Edge.TOP, GtkLayerShell.Edge.LEFT,
+                         GtkLayerShell.Edge.RIGHT, GtkLayerShell.Edge.BOTTOM]:
+                GtkLayerShell.set_anchor(self.win, edge, True)
+            GtkLayerShell.set_keyboard_mode(self.win, GtkLayerShell.KeyboardMode.EXCLUSIVE)
+        else:
+            self.win.fullscreen()
 
-        GtkLayerShell.set_keyboard_mode(self.win, GtkLayerShell.KeyboardMode.EXCLUSIVE)
         self.win.connect('key-press-event', self.on_key)
         self.win.connect('destroy', Gtk.main_quit)
         self.win.connect('realize', lambda _w: self.update_input())
@@ -664,50 +690,68 @@ class App:
         cr.set_operator(cairo.OPERATOR_OVER)
         return False
 
+    def _set_keyboard_mode(self, mode_name):
+        """
+        Applies a gtk-layer-shell keyboard interactivity mode and flushes it to the
+        compositor. Without the flush the wl_surface commit is deferred to the next
+        frame, so the overlay keeps its exclusive grab and typing never reaches the
+        window underneath.
+        """
+        if not HAS_LAYER_SHELL:
+            return
+        mode = getattr(GtkLayerShell.KeyboardMode, mode_name, None)
+        if mode is None:
+            return
+        GtkLayerShell.set_keyboard_mode(self.win, mode)
+        display = self.win.get_display()
+        if display:
+            display.flush()
+
     def update_input(self):
         """
-        Updates input region and keyboard interactivity mode based on draw_mode.
-        - Passthrough Mode (draw_mode=True): canvas passes mouse clicks to desktop windows underneath.
-          Toolbar remains interactive. Keyboard focus is released to desktop apps.
-        - Drawing Mode (draw_mode=False): canvas intercepts mouse clicks for drawing strokes & text.
-          Keyboard focus is grabbed for shortcuts and text typing.
+        Updates input region and keyboard interactivity mode.
+        - Passthrough Mode (passthrough=True): canvas passes mouse clicks to desktop
+          windows underneath. Toolbar stays interactive, keyboard focus is released
+          so the app below receives typing.
+        - Drawing Mode (passthrough=False): canvas intercepts mouse clicks for strokes
+          and text; keyboard is grabbed exclusively for shortcuts and text entry.
         """
         w = self.win.get_window()
         if not w:
             return
 
-        if self.draw_mode:
-            # Passthrough mode: restrict input region to toolbar area only
+        if self.passthrough:
+            # Drop the keyboard grab FIRST so the compositor can hand focus back to
+            # the app underneath before the pointer region shrinks.
+            self._set_keyboard_mode('NONE')
+
+            # Restrict the pointer input region to the toolbar area only.
             alloc = self.bar.get_allocation()
             if alloc.width > 1 and alloc.height > 1:
-                # Add 8px margin around toolbar for easy interaction
-                rect = cairo.RectangleInt(
+                # 8px margin around the toolbar for easier hitting.
+                region = cairo.Region(cairo.RectangleInt(
                     max(0, alloc.x - 8),
                     max(0, alloc.y - 8),
                     alloc.width + 16,
                     alloc.height + 16
-                )
-                region = cairo.Region(rect)
-                w.input_shape_combine_region(region, 0, 0)
+                ))
             else:
                 region = cairo.Region()
-                w.input_shape_combine_region(region, 0, 0)
-
-            # Keyboard mode NONE lets active desktop apps receive keyboard focus
-            if HAS_LAYER_SHELL and GtkLayerShell:
-                GtkLayerShell.set_keyboard_mode(self.win, GtkLayerShell.KeyboardMode.NONE)
-        else:
-            # Drawing mode: full window receives input
-            rect = cairo.RectangleInt(0, 0, 32767, 32767)
-            region = cairo.Region(rect)
             w.input_shape_combine_region(region, 0, 0)
 
-            # EXCLUSIVE keyboard mode captures shortcuts and text input
-            if HAS_LAYER_SHELL and GtkLayerShell:
-                GtkLayerShell.set_keyboard_mode(self.win, GtkLayerShell.KeyboardMode.EXCLUSIVE)
+            # Release GTK's internal focus too, otherwise the canvas keeps claiming
+            # key events the moment the compositor hands the surface focus back.
+            self.win.set_focus(None)
+        else:
+            # Drawing mode: the whole surface receives pointer input.
+            region = cairo.Region(cairo.RectangleInt(0, 0, 32767, 32767))
+            w.input_shape_combine_region(region, 0, 0)
+
+            self._set_keyboard_mode('EXCLUSIVE')
             if self.area:
                 self.area.grab_focus()
 
+        # Force a frame so GDK actually commits the new input region.
         self.win.queue_draw()
 
     # ── Actions ──
@@ -717,7 +761,7 @@ class App:
         self.tool = t
         self.text_active = False
 
-        if self.draw_mode:
+        if self.passthrough:
             self.toggle_mode()
 
         tool_btns = [
@@ -761,19 +805,19 @@ class App:
         if self.text_active and self.text_buffer:
             self.commit_text()
         if self.strokes:
-            self.redo.append(self.strokes.pop())
+            self.redo_stack.append(self.strokes.pop())
         if self.area:
             self.area.queue_draw()
 
     def redo(self):
-        if self.redo:
-            self.strokes.append(self.redo.pop())
+        if self.redo_stack:
+            self.strokes.append(self.redo_stack.pop())
         if self.area:
             self.area.queue_draw()
 
     def clear(self):
         self.strokes.clear()
-        self.redo.clear()
+        self.redo_stack.clear()
         self.text_active = False
         self.text_buffer = ""
         if self.area:
@@ -815,19 +859,31 @@ class App:
     def toggle_mode(self):
         if self.text_active and self.text_buffer:
             self.commit_text()
-        self.draw_mode = not self.draw_mode
+        self.text_active = False
+        self.passthrough = not self.passthrough
         ctx = self.btn_mode.get_style_context()
 
-        if self.draw_mode:
+        if self.passthrough:
             self.btn_mode.set_label("Pass")
             ctx.remove_class("mode-draw")
             ctx.add_class("mode-passthrough")
+            # Keys no longer reach the overlay from here on, so spell out the way back.
+            self.show_toast("Click-through — click 'Pass' or SIGUSR1 to return")
         else:
             self.btn_mode.set_label("Draw")
             ctx.remove_class("mode-passthrough")
             ctx.add_class("mode-draw")
 
         self.update_input()
+
+    def _on_signal_toggle(self):
+        """
+        SIGUSR1 handler, so a compositor-level keybind can toggle the overlay even
+        while it is in passthrough mode and receives no key events of its own:
+            bind = SUPER, W, exec, pkill -USR1 -f whiteboard.py
+        """
+        self.toggle_mode()
+        return GLib.SOURCE_CONTINUE
 
     def commit_text(self):
         if self.text_buffer and self.text_active:
@@ -837,7 +893,7 @@ class App:
             s.text = self.text_buffer
             s.tx, s.ty = self.text_pos
             self.strokes.append(s)
-            self.redo.clear()
+            self.redo_stack.clear()
         self.text_active = False
         self.text_buffer = ""
         if self.area:
